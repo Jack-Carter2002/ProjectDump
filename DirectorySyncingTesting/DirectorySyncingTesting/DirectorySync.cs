@@ -128,6 +128,7 @@ namespace DirectorySyncingTesting
 
         List<string> GetEndDirectorys(string directory)
         {
+            //Searches through all directroys from point x and returns the end of each path
             List<string> topDirectories = new List<string>();
             try
             {
