@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Farm and Mine Save Editor</title>
+<style>
+:root{color-scheme:dark;--bg:#111827;--panel:#1f2937;--line:#374151;--text:#e5e7eb;--muted:#9ca3af;--accent:#60a5fa;--ok:#34d399;--warn:#fbbf24}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1180px;margin:0 auto;padding:24px}h1{margin:0 0 6px;font-size:26px}h2{font-size:17px;margin:0 0 12px}p{color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0}textarea,input,select{width:100%;background:#0b1220;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:9px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace}textarea{min-height:130px;resize:vertical}button{border:0;border-radius:6px;background:var(--accent);color:#07111f;padding:9px 14px;font-weight:700;cursor:pointer;margin:5px 5px 0 0}button.secondary{background:#4b5563;color:var(--text)}button.good{background:var(--ok)}button:disabled{opacity:.5;cursor:not-allowed}.row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.field label{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}.field input{font-family:inherit}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px}.status{padding:10px;border-radius:6px;background:#0b1220;color:var(--muted);white-space:pre-wrap}.status.ok{color:var(--ok)}.status.error{color:#fca5a5}.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{background:#374151;color:var(--text)}.tabs button.active{background:var(--accent);color:#07111f}.hidden{display:none}.small{font-size:12px;color:var(--muted)}details{margin-top:12px}summary{cursor:pointer;color:var(--accent)}.invention{display:grid;grid-template-columns:42px 1fr 130px 130px;gap:8px;align-items:center;margin:5px 0}.invention code{color:#c4b5fd}.danger{color:var(--warn)}@media(max-width:700px){.row{grid-template-columns:1fr}.invention{grid-template-columns:32px 1fr}.invention input{grid-column:2}}
+</style>
+</head>
+<body><main>
+<h1>Farm and Mine Save Editor</h1>
+<p>Everything runs locally in your browser. Paste a save string beginning with <code>[A|</code>, decode it, edit fields, then export the result for import into the game.</p>
+<section class="panel"><h2>1. Open save</h2><textarea id="input" placeholder="Paste the complete [A|...] save string here"></textarea><button id="decode">Decode save</button><button id="clear" class="secondary">Clear</button><div id="status" class="status">No save loaded.</div></section>
+<section id="editor" class="hidden">
+<div class="panel"><h2>2. Edit named fields</h2><div class="row">
+<div class="field"><label>Money</label><input data-pos="14" type="number" step="any"></div>
+<div class="field"><label>Population</label><input data-pos="22" type="number" step="any"></div>
+<div class="field"><label>Workforce</label><input data-pos="23" type="number" step="any"></div>
+<div class="field"><label>Maximum population</label><input data-pos="24" type="number" step="any"></div>
+<div class="field"><label>Food supply</label><input data-pos="25" type="number" step="any"></div>
+<div class="field"><label>Food variety</label><input data-pos="26" type="number" step="any"></div>
+<div class="field"><label>Houses built</label><input data-pos="32" type="number" step="any"></div>
+<div class="field"><label>Highest population</label><input data-pos="31" type="number" step="any"></div>
+<div class="field"><label>Restarts</label><input data-pos="12" type="number" step="any"></div>
+</div><h2 style="margin-top:18px">Invention boosts</h2><div id="boosts" class="grid"></div><h2 style="margin-top:18px">Prestige points</h2><div id="prestige" class="grid"></div><h2 style="margin-top:18px">Inventions</h2><div id="inventions"></div></div>
+<div class="panel"><h2>3. Advanced raw values</h2><p class="small">The save contains a version-dependent number of numeric values. Edit this JSON only if you know the serialized layout. Named-field edits are applied to this array when you export.</p><textarea id="raw" spellcheck="false"></textarea><button id="syncRaw" class="secondary">Apply named fields to raw JSON</button><button id="loadRaw" class="secondary">Load raw JSON into fields</button></div>
+<div class="panel"><h2>4. Export</h2><button id="encode" class="good">Encode import string</button><button id="copy" class="secondary" disabled>Copy result</button><a id="download" class="small" style="display:none;margin-left:8px" download="farm_and_mine_save.txt">Download result</a><textarea id="output" readonly placeholder="Your import string will appear here"></textarea><div id="result" class="status">No export yet.</div></div>
+</section></main>
+<script>
+'use strict';
+const ALPHABET='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+=';
+const REV=Object.fromEntries([...ALPHABET].map((c,i)=>[c,i]));
+const inventionCodes=['INV_VEGFARMING','INV_SALADSMAKING','INV_WHEATFARMING','INV_WINDMILL','INV_BAKING','INV_WATER','INV_LUMBERMILL','INV_MINE','INV_MINEENGINE','INV_FOUNDRY','INV_FORGE','INV_MINEDRILL','INV_COW','INV_CHEESE','INV_PIZZA','INV_WATERWHEEL','INV_POTTER','INV_CLAY','INV_BRICK','INV_METEO','INV_BELLOWS','INV_TRACKTOR','INV_TRANSMISSION','INV_OIL','INV_GAS','INV_FISHING','INV_CATS','INV_WEATHER','INV_PUMPKIN','INV_FERRY','INV_LAMB','INV_KNIT','INV_YARN','INV_ECONOMY','INV_LOGISTICS','INV_AGRICULTURE','INV_SCIENCE','INV_SUNFLOWER','INV_SUNFLOWEROIL','INV_HONEY','INV_SUGARCANE','INV_SUGARMAKING','INV_LEMON','INV_ICE','INV_LEMONADE','INV_GROCERY','INV_COTTON','INV_LAVENDER','INV_TEXTILE','INV_TSHIRTS','INV_PERFUME','INV_WORKFORCE','INV_BANKING','INV_LIBRARY','INV_CRANE','INV_MARKETING','INV_ICECREAM','INV_HOTEL','INV_TIME','INV_GOLDMINING','INV_MINT','INV_HELICOPTER','INV_DIAMONDMINING','INV_JEWELRY','INV_GUARDING'];
+const boostCodes=['economy','logistics','agriculture','science','workforce','marketing'];
+const prestigeCodes=['Click','Prod','Price','Pop','Transp','MaxPop','Science','WorkForce'];
+let values=null;
+const $=id=>document.getElementById(id);
+function setStatus(el,text,kind=''){el.textContent=text;el.className='status '+kind}
+function bytesToValues(data){if(data.byteLength%8)throw Error('Decompressed data is not a whole number of doubles.');let dv=new DataView(data.buffer,data.byteOffset,data.byteLength),a=[];for(let i=0;i<data.byteLength;i+=8)a.push(dv.getFloat64(i,false));let count=Math.trunc(a[0]);if(count!==a.length-1)throw Error(`Length prefix says ${count}, but found ${a.length-1} values.`);return a.slice(1)}
+function decodeAlphabet(s){s=s.trim();if(s.startsWith('[A|')&&s.endsWith(']'))s=s.slice(3,-1);if(!s||[...s].some(c=>REV[c]===undefined))throw Error('Not a valid Farm and Mine [A|...] string.');let out=[];for(let i=0;i<s.length;i+=4){let n=Math.min(4,s.length-i),a=REV[s[i]],b=n>1?REV[s[i+1]]:0,c=n>2?REV[s[i+2]]:0,d=n>3?REV[s[i+3]]:0;let q=[(a<<2|b>>4)-128];if(n>1)q.push(((b&15)<<4|c>>2)-128);if(n>2)q.push(((c&3)<<6|d)-128);out.push(...q.map(x=>(x+256)&255))}return new Uint8Array(out)}
+async function decodeSave(text){let compressed=decodeAlphabet(text);let ds=new DecompressionStream('deflate');let stream=new Blob([compressed]).stream().pipeThrough(ds);return bytesToValues(new Uint8Array(await new Response(stream).arrayBuffer()))}
+function putFields(){document.querySelectorAll('[data-pos]').forEach(e=>{let v=values[+e.dataset.pos];e.value=Number.isFinite(v)?v:(Number.isNaN(v)?'NaN':v)})}
+function num(x){if(x.trim().toLowerCase()==='nan')return NaN;let n=Number(x);if(!Number.isFinite(n))throw Error('A field contains an invalid number.');return n}
+function fieldsToValues(){document.querySelectorAll('[data-pos]').forEach(e=>values[+e.dataset.pos]=num(e.value));document.querySelectorAll('#boosts input').forEach((e,i)=>values[40+i]=num(e.value));document.querySelectorAll('#prestige input').forEach((e,i)=>values[47+i]=num(e.value));document.querySelectorAll('#inventions input.level').forEach((e,i)=>values[335+i*3]=i);document.querySelectorAll('#inventions input.level').forEach((e,i)=>values[336+i*3]=num(e.value));document.querySelectorAll('#inventions input.prev').forEach((e,i)=>values[337+i*3]=num(e.value))}
+function renderExtras(){let b=$('boosts');b.innerHTML='';boostCodes.forEach((x,i)=>b.insertAdjacentHTML('beforeend',`<div class="field"><label>${x}</label><input type="number" step="any" value="${values[40+i]}"></div>`));let p=$('prestige');p.innerHTML='';prestigeCodes.forEach((x,i)=>p.insertAdjacentHTML('beforeend',`<div class="field"><label>${x}</label><input type="number" step="any" value="${values[47+i]}"></div>`));let inv=$('inventions');inv.innerHTML='';for(let i=0;i<65;i++){let level=values[336+i*3],prev=values[337+i*3];inv.insertAdjacentHTML('beforeend',`<div class="invention"><span>${i}</span><code>${inventionCodes[i]}</code><input class="level" type="number" step="any" value="${level}"><input class="prev" type="number" step="any" value="${prev}"></div>`)} }
+function syncRaw(){fieldsToValues();$('raw').value=JSON.stringify(values,null,2)}
+function loadRaw(){let x=JSON.parse($('raw').value);if(!Array.isArray(x)||x.length<55)throw Error('Raw JSON must be an array containing at least 55 values.');values=x;putFields();renderExtras()}
+function signedBytes(data){return new Uint8Array(data)}
+function encodeAlphabet(bytes){let s='';for(let i=0;i<bytes.length;i+=3){let n=Math.min(3,bytes.length-i),a=bytes[i]-128,b=n>1?bytes[i+1]-128:0,c=n>2?bytes[i+2]-128:0;s+=ALPHABET[(a&255)>>2];s+=ALPHABET[((a&3)<<4)|((b&255)>>4)];if(n>1)s+=ALPHABET[((b&15)<<2)|((c&255)>>6)];if(n>2)s+=ALPHABET[c&63]}return '[A|'+s+']'}
+async function encodeSave(v){let buf=new ArrayBuffer(8*(v.length+1)),dv=new DataView(buf);dv.setFloat64(0,v.length,false);v.forEach((x,i)=>dv.setFloat64(8*(i+1),x,false));let cs=new CompressionStream('deflate');let stream=new Blob([buf]).stream().pipeThrough(cs);let compressed=new Uint8Array(await new Response(stream).arrayBuffer());return encodeAlphabet(compressed)}
+$('decode').onclick=async()=>{try{setStatus($('status'),'Decoding…');values=await decodeSave($('input').value);if(values.length<55)throw Error('The decoded save is too short to be a Farm and Mine world save: '+values.length+' values.');$('editor').classList.remove('hidden');putFields();renderExtras();$('raw').value=JSON.stringify(values,null,2);setStatus($('status'),`Decoded successfully: ${values.length.toLocaleString()} values.`,'ok')}catch(e){setStatus($('status'),e.message,'error')}};
+$('syncRaw').onclick=()=>{try{syncRaw();setStatus($('result'),'Named fields applied to raw JSON.','ok')}catch(e){setStatus($('result'),e.message,'error')}};
+$('loadRaw').onclick=()=>{try{loadRaw();setStatus($('result'),'Raw JSON loaded into named fields.','ok')}catch(e){setStatus($('result'),e.message,'error')}};
+$('encode').onclick=async()=>{try{syncRaw();let out=await encodeSave(values);$('output').value=out;$('copy').disabled=false;let blob=new Blob([out],{type:'text/plain'});$('download').href=URL.createObjectURL(blob);$('download').style.display='inline';setStatus($('result'),`Encoded successfully: ${out.length.toLocaleString()} characters. Paste the complete result into the game.`,`ok`)}catch(e){setStatus($('result'),e.message,'error')}};
+$('copy').onclick=async()=>{await navigator.clipboard.writeText($('output').value);setStatus($('result'),'Copied import string to clipboard.','ok')};
+$('clear').onclick=()=>{location.reload()};
+</script></body></html>
